@@ -44,6 +44,9 @@ The `beat_detector` module provides the `BD` class. Objects created by instantia
     python3 main.py -in <IN_PATH> -out <OUT_PATH> -l 800 -r 1500 -sr 16000
     ```
 
+# Example
+![Image](images/example.png)
+
 # References
 
 ```
