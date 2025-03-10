@@ -1,5 +1,5 @@
-#  🅰️🥁 Vowel Beat Detector 🥁🅰️
-This program is based on the beat measurement procedure as described by Cummins &amp; Port (1998). A beat is located at (roughly) the midpoint of every local rise in the derivative of the amplitude envelope of a waveform. As a basic functionality, the program receives audio files as input and outputs arrays with timestamps of the detected beats.
+#  🥁 Vowel Beat Detector 🥁
+This program is based on the beat measurement procedure as described by Cummins &amp; Port (1998). A beat is located at (roughly) the midpoint of every local rise in the derivative of the amplitude envelope of a waveform. The main script receives audio files as input and outputs arrays with timestamps of the detected beats.
 
 # Basic procedure
 This is an implementation of the following procedure, taken from Appendix A of Cummins & Port's Rhythmic constraints on stress timing in English (1998):
@@ -35,7 +35,7 @@ The `beat_detector` module provides the `BD` class. Objects created by instantia
     * `-l`: bandpass filter's left cutoff frequency
     * `-sr`: audio sampling rate. Automatic resampling is performed if specified value is different from the audio's native sr
     
-    Optional argument:
+    Optional flag:
     * `-tg`: whether the output should be Praat .TextGrid files
 
     Example:
@@ -47,7 +47,7 @@ The `beat_detector` module provides the `BD` class. Objects created by instantia
 # Example
 ![Image](images/example.png)
 
-# References
+# Reference
 
 ```
 @article{CUMMINS1998145,
