@@ -14,7 +14,7 @@ The `beat_detector` module provides the `BD` class. Objects created by instantia
     ```
     git clone https://github.com/nnenufar/vowel_beat_detector.git
     cd vowel_beat_detector
-    pip install -r requirements
+    pip install -r requirements.txt
     ```
 2. **Set up input folder**
 
