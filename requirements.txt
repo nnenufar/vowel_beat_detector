@@ -1,8 +1,7 @@
-ipython==8.12.3
-librosa==0.10.2.post1
-matplotlib==3.10.1
-numpy==2.2.3
-praatio==6.2.0
-scikit_learn==1.6.1
-scipy==1.15.2
-torch==2.4.1+cu121
+librosa
+matplotlib
+numpy
+praatio
+scikit_learn
+scipy
+soundfile

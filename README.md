@@ -7,7 +7,7 @@ This is an implementation of the following procedure, taken from Appendix A of C
 > The signal is bandpass filtered using a firstorder Butterworth filter centered at 1000 Hz and having a bandwidth of 600 Hz. Because of the shallow skirts of this filter, the net effect is to largely eliminate fricative noise and F0 energy, leaving energy in the formant regions intact. Informal trials with a range  of filters indicated that any procedure which achieved these dual goals would suffice. The resulting signal is rectified (using absolute values) and smoothed heavily, usually using another first order Butterworth filter, this time as a lowpass filter with a very low cutoff of about 10 Hz. The result of this stage is a smooth amplitude envelope. A beat is associated with every local rise in this envelope, and is defined as occuring at the point in time midway between the points where the local rise is 10% and 90% complete. This is similar to the heuristic used in Scott (1993), and serves to remove the effect of very gradual on- and offsets.
 
 # Functionality
-The `beat_detector` module provides the `BD` class. Objects created by instantiating this class can be configured with respect to filter design and peak detection properties and offer the base method for vowel beat detection. Additionally, it is possible to plot the byproducts of the procedure and play the filtered audio. Check out the files in the `notebooks` directory to explore these settings.
+The `beat_detector` module provides the `BD` class. Objects created by instantiating this class can be configured with respect to filter design and peak detection properties and offer the base method for vowel beat detection. Additionally, it is possible to plot the byproducts of the procedure and play the filtered audio.
 
 # Usage
 1. **Clone this repository and install dependencies**
@@ -24,30 +24,40 @@ The `beat_detector` module provides the `BD` class. Objects created by instantia
     ├──audio1.wav
     ├──audio2.wav
     ├──audio3.wav
-    ...
+    ```
+
+    Each audio filename must be unique
     
 3. **Run main script**
 
-    Required arguments:
+    Arguments:
     * `-in`: path to audio files input folder
     * `-out`: path to output files
     * `-r`: bandpass filter's right cutoff frequency
     * `-l`: bandpass filter's left cutoff frequency
     * `-sr`: audio sampling rate. Automatic resampling is performed if specified value is different from the audio's native sr
     
-    Optional flag:
-    * `-tg`: whether the output should be Praat .TextGrid files
+    Optional:
+    * `-tg`: if used, textgrid will be saved in [output_dir]/textgrids
+    * `-w`: if used, filtered audios will be saved in [output_dir]/filtered_wavs
+    * `-plt`: if used, plots will be saved in [output_dir]/plots
 
     Example:
     
     ```
-    python3 main.py -in <IN_PATH> -out <OUT_PATH> -l 800 -r 1500 -sr 16000
+    python3 main.py -in <IN_PATH> -out <OUT_PATH> -l 800 -r 1500 -sr 16000 -plt
     ```
+
+# Output format and loading
+Outputs will be saved under the specified directory. Detected beats are numpy arrays aggregated into `.npz` files and indexed by their filenames on the original input folder, so . Check `test/inspect_arays` for an example on how to load the data.    
 
 # Example
 ![Image](images/example.png)
 
-# Reference
+# References
+* [A similar implementation using Praat](https://github.com/pabarbosa/prosody-scripts/tree/master/BeatExtractor)  
+
+* Reference article:
 
 ```
 @article{CUMMINS1998145,
