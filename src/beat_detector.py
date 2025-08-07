@@ -2,11 +2,12 @@ from scipy import signal
 import soundfile as sf
 import matplotlib.pyplot as plt
 import numpy as np
+import os
 from praatio import textgrid
 from sklearn.preprocessing import MaxAbsScaler
 
 class BD():
-  def __init__(self, sr, bandpass_left, bandpass_right, bandpass_order = 1, lowpass_order = 3, lowpass_cutoff = 10, min_dur = 0.03, min_peak_prominence = 0.2):
+  def __init__(self, sr, bandpass_left, bandpass_right, bandpass_order = 1, lowpass_order = 3, lowpass_cutoff = 15, min_dur = 0.03, min_peak_prominence = 0.2):
     self.bandpass_order = bandpass_order
     self.bandpass_left = bandpass_left
     self.bandpass_right = bandpass_right
@@ -53,10 +54,13 @@ class BD():
     self.rectified = self.rectify(self.filtered)
     self.envelope = signal.lfilter(*self.lowpass(), self.rectified)
     self.derivative = np.gradient(self.envelope)
+    self.second_derivative = np.gradient(self.derivative)
     scaler = MaxAbsScaler()
     self.derivative = scaler.fit_transform(self.derivative.reshape(-1, 1)).reshape(-1)
+    self.second_derivative = scaler.fit_transform(self.second_derivative.reshape(-1, 1)).reshape(-1)
 
     self.peaks, _ = signal.find_peaks(self.derivative, distance = self.sr * self.min_dur, prominence = self.min_peak_prominence)
+    self.peaks_second, _ = signal.find_peaks(self.second_derivative, distance = self.sr * self.min_dur, prominence = self.min_peak_prominence)
 
     # Note: self.beats will store the sample indices of the beats
     self.beats = []
@@ -69,13 +73,22 @@ class BD():
       else:
         continue
 
+    self.beats_second = []
+    min_ref = 0.01
+    for index in self.peaks_second:
+      peak_index = index
+      if self.second_derivative[peak_index] > min_ref:
+        self.beats_second.append(peak_index)
+
     beat_timestamps =  np.array(self.beats) / self.sr
 
     time_normalized_timestamps = beat_timestamps / self.tmax_s
 
-    return beat_timestamps, time_normalized_timestamps
+    beat_timestamps_second = np.array(self.beats) / self.sr
 
-  def plot_filtered(self, out_file):
+    return beat_timestamps, time_normalized_timestamps, beat_timestamps_second
+
+  def plot_filtered(self, out_file, ground_truth = None):
     '''
     Plotting resources. Must be called after detect_beats().
     Shows the original and bandpass filtered waveforms, the amplitude envelope, its derivative
@@ -101,13 +114,33 @@ class BD():
 
     plt.subplot(5,1,5)
     plt.plot(self.derivative)
-    plt.plot(self.peaks, self.derivative[self.peaks], "*", color = 'green', label = 'Peak')
     for beat in self.beats:
-      plt.axvline(beat, color='red', linestyle='--', alpha=0.7, label="Beat" if beat == self.beats[0] else "")
-    plt.legend()
-    plt.title("Derivative of the envelope")
-    plt.tight_layout()
-    plt.savefig(out_file)
+      plt.axvline(beat, color='red', linestyle='--', alpha=0.7, label="Detected Beat" if beat == self.beats[0] else "")
+
+    if ground_truth is not None:
+      tg = textgrid.openTextgrid(ground_truth, includeEmptyIntervals=True)
+      gt_tier = tg.getTier('beats')
+      gt_timestamps = [entry.time * self.sr for entry in gt_tier.entries]
+      for i, beat in enumerate(gt_timestamps):
+        label = "Ground truth" if i == 0 else ""
+        plt.axvline(beat, color='red', linestyle='-', alpha=0.7, label = label)
+      plt.legend(fontsize='small')
+      plt.title("Derivative of the envelope")
+      plt.tight_layout()
+      plt.savefig(out_file)
+    else:
+      plt.legend()
+      plt.title("Derivative of the envelope")
+      plt.tight_layout()
+      plt.savefig(out_file)
+
+    # plt.subplot(6,1,6)
+    # plt.plot(self.second_derivative)
+    # plt.plot(self.peaks_second, self.second_derivative[self.peaks_second], "*", color = 'purple', label = 'Peak_2nd derivative')
+    # for beat in self.beats_second:
+    #   plt.axvline(beat, color='red', linestyle='-', alpha=0.7, label="Beat_2nd derivative" if beat == self.beats_second[0] else "")
+    # plt.legend()
+    # plt.title("Second derivative of the envelope")
 
     ## Bandpass frequency response
     # plt.figure(figsize=(6, 4))

@@ -1,5 +1,6 @@
 import librosa
 import os
+from pathlib import Path
 import argparse
 import numpy as np
 from tqdm import tqdm
@@ -7,7 +8,7 @@ from beat_detector import BD
 
 parser = argparse.ArgumentParser()
 
-parser.add_argument('-in', '--audio_dir', type=str, required=True, help='directory with audio files')
+parser.add_argument('-in', '--input_dir', type=str, required=True, help='directory with audio files')
 parser.add_argument('-out', '--output_dir', type=str, required=True, help='directory to save output')
 parser.add_argument('-sr', '--sampling_rate', type=int, required=True, help='audio sampling rate, automatic resampling is performed if specified sr is different from native')
 parser.add_argument('-l', '--bandpass_left', type=int, default=800, help='bandpass filters left cutoff')
@@ -25,7 +26,9 @@ normTimestamps_data = {}
 
 # Script will only read .wav files in the specified directory, ignoring subdirectories
 
-file_list = [f"{args.audio_dir}/{f}" for f in os.listdir(args.audio_dir) if os.path.isfile(f"{args.audio_dir}/{f}") and f.split('.')[-1] == 'wav']
+file_list = [f"{args.input_dir}/audio/{f}" for f in os.listdir(f'{args.input_dir}/audio') if os.path.isfile(f"{args.input_dir}/audio/{f}") and f.split('.')[-1] == 'wav']
+assert len(file_list) == len(os.listdir(f'{args.input_dir}/audio')), f"audio directory must only contain wav files"
+gt_base_path = os.path.join(args.input_dir, 'textgrids_gt')
 
 for i, file_path in enumerate(tqdm(file_list, desc="Processing audios")):
   waveform, sr = librosa.load(file_path, sr = args.sampling_rate)
@@ -51,10 +54,14 @@ for i, file_path in enumerate(tqdm(file_list, desc="Processing audios")):
     bd.write_wav(out_file)
 
   if args.save_plots:
+    gt_path = os.path.join(gt_base_path, Path(identifier).stem + '.TextGrid')
     plots_path = os.path.join(args.output_dir, 'plots')
     os.makedirs(plots_path, exist_ok=True)
-    out_file = os.path.join(plots_path, identifier[:-4] + ".png")
-    bd.plot_filtered(out_file)
+    out_file = os.path.join(plots_path, Path(identifier).stem + '.png')
+    if os.path.isfile(gt_path):
+      bd.plot_filtered(out_file, gt_path)
+    else:
+      bd.plot_filtered(out_file)
 
 os.makedirs(args.output_dir, exist_ok=True)
 np.savez(os.path.join(args.output_dir, "beat_timestamps.npz"), **timestamps_data)

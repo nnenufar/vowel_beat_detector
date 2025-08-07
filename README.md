@@ -20,13 +20,18 @@ The `beat_detector` module provides the `BD` class. Objects created by instantia
 
     All audio files must be contained inside the same folder:
     ```
-    data/
-    ├──audio1.wav
-    ├──audio2.wav
-    ├──audio3.wav
+    input_dir/
+            audio/
+                ├──audio1.wav
+                ├──audio2.wav
+                ├──audio3.wav
+            textgrids_gt/ (optional)
+                ├──audio1.TextGrid
     ```
 
-    Each audio filename must be unique
+    Each audio filename must be unique.
+    
+    Optionally, manually segmented textgrids can be included under `textgrids_gt`. If present, the provided annotations will be plotted alongside automatically detected ones when `-plt` is used. The ground truth textgrid must contain a point tier named `beats` and the filename must match the wav's.
     
 3. **Run main script**
 
