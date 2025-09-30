@@ -2,8 +2,8 @@ import librosa
 import os
 from pathlib import Path
 import argparse
-import numpy as np
 from tqdm import tqdm
+import pandas as pd
 from beat_detector import BD
 
 parser = argparse.ArgumentParser()
@@ -21,13 +21,11 @@ args = parser.parse_args()
 
 bd = BD( sr = args.sampling_rate, bandpass_left=args.bandpass_left, bandpass_right=args.bandpass_right)
 
-timestamps_data = {}
-normTimestamps_data = {}
+data = []
 
 # Script will only read .wav files in the specified directory, ignoring subdirectories
 
-file_list = [f"{args.input_dir}/audio/{f}" for f in os.listdir(f'{args.input_dir}/audio') if os.path.isfile(f"{args.input_dir}/audio/{f}") and f.split('.')[-1] == 'wav']
-assert len(file_list) == len(os.listdir(f'{args.input_dir}/audio')), f"audio directory must only contain wav files"
+file_list = [f"{args.input_dir}/{f}" for f in os.listdir(f'{args.input_dir}') if os.path.isfile(f"{args.input_dir}/{f}") and f.split('.')[-1] == 'wav']
 gt_base_path = os.path.join(args.input_dir, 'textgrids_gt')
 
 for i, file_path in enumerate(tqdm(file_list, desc="Processing audios")):
@@ -37,8 +35,12 @@ for i, file_path in enumerate(tqdm(file_list, desc="Processing audios")):
   # Generate a unique ID
   identifier = os.path.basename(file_path)
 
-  timestamps_data[identifier] = beats[0]
-  normTimestamps_data[identifier] = beats[1]
+  entry = {
+      'key': identifier,
+      'timestamps': beats[0],
+      'envelope': beats[1]
+  }
+  data.append(entry)
 
   if args.save_textgrids:
     tg_path = os.path.join(args.output_dir, 'textgrids')
@@ -64,5 +66,6 @@ for i, file_path in enumerate(tqdm(file_list, desc="Processing audios")):
       bd.plot_filtered(out_file)
 
 os.makedirs(args.output_dir, exist_ok=True)
-np.savez(os.path.join(args.output_dir, "beat_timestamps.npz"), **timestamps_data)
-np.savez(os.path.join(args.output_dir, "beat_timeNorm.npz"), **normTimestamps_data)
+out_file = os.path.join(args.output_dir, "beat_timestamps.parquet")
+df = pd.DataFrame(data)
+df.to_parquet(out_file, engine='pyarrow')

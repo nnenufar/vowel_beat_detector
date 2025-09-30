@@ -13,7 +13,7 @@ timeNorm_path = os.path.join(arrays_dir, "beat_timeNorm.npz")
 all_timestamps = np.load(timestamps_path)
 all_timeNorm = np.load(timeNorm_path)
 
-identifier = "JN.wav"
+identifier = "MSP-PODCAST_0002_0033.wav"
 
 timestamps = all_timestamps[identifier]
 timeNorm = all_timeNorm[identifier]

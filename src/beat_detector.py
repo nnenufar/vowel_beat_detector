@@ -2,12 +2,13 @@ from scipy import signal
 import soundfile as sf
 import matplotlib.pyplot as plt
 import numpy as np
-import os
+import pandas as pd
 from praatio import textgrid
+import warnings
 from sklearn.preprocessing import MaxAbsScaler
 
 class BD():
-  def __init__(self, sr, bandpass_left, bandpass_right, bandpass_order = 1, lowpass_order = 3, lowpass_cutoff = 15, min_dur = 0.03, min_peak_prominence = 0.2):
+  def __init__(self, sr, bandpass_left, bandpass_right, bandpass_order = 1, lowpass_order = 3, lowpass_cutoff = 10, min_dur = 0.05, min_peak_prominence = 0.25):
     self.bandpass_order = bandpass_order
     self.bandpass_left = bandpass_left
     self.bandpass_right = bandpass_right
@@ -26,6 +27,18 @@ class BD():
     bandpass_right = self.bandpass_right / self.nyquist
     bandpass_left = self.bandpass_left / self.nyquist
     b, a = signal.butter(self.bandpass_order, [bandpass_left, bandpass_right], btype = 'bandpass')
+
+    # Filter delay
+    with warnings.catch_warnings():
+      warnings.simplefilter("ignore", UserWarning)
+      warnings.simplefilter("ignore", RuntimeWarning)
+      w, gd_samples = signal.group_delay((b, a), fs=self.sr)
+    
+    passband_indices = np.where((w >= self.bandpass_left) & (w <= self.bandpass_right))
+    delay_in_passband = gd_samples[passband_indices]
+    mean_delay_samples = np.mean(delay_in_passband)
+    self.delay_bp_samples = mean_delay_samples
+
     return (b, a)
 
   def rectify(self, waveform):
@@ -40,29 +53,46 @@ class BD():
     '''
     cutoff = self.lowpass_cutoff / self.nyquist
     b, a = signal.butter(self.lowpass_order, cutoff, btype = 'lowpass')
+
+    # Filter delay
+    w, gd_samples = signal.group_delay((b, a), fs=self.sr)
+    passband_indices = np.where(w <= self.lowpass_cutoff)
+    delay_in_passband = gd_samples[passband_indices]
+    mean_delay_samples = np.mean(delay_in_passband)
+    self.delay_lp_samples = mean_delay_samples
+
     return (b, a)
 
   def detect_beats(self, waveform):
     '''
-    Beats are associated with local maxima in the first derivative of the spectral envelope.
-    Outputs arrays with timestamps (in seconds) of the detected beats.
+    Core function. Performs all signal processing steps.
+    outputs a tuple:
+    (beat_timestamps_seconds, envelope_spectrum) 
     '''
-    # Store waveform and intermediate signals as instance attributes
+    # Waveform and intermediate signals are stored as instance attributes
     self.waveform = waveform
-    self.tmax_s = len(self.waveform) / self.sr 
+    self.tmax_s = len(self.waveform) / self.sr
+    scaler = MaxAbsScaler()
+
     self.filtered = signal.lfilter(*self.bandpass(), self.waveform)
     self.rectified = self.rectify(self.filtered)
     self.envelope = signal.lfilter(*self.lowpass(), self.rectified)
+    self.filter_delay = self.delay_bp_samples + self.delay_lp_samples
+
+    # Compensate for filter delay
+    self.envelope = self.envelope[int(self.filter_delay):]
+    # Moving average smoothing (50ms window)
+    self.envelope = pd.Series(self.envelope).rolling(int(self.sr/20), center=False, min_periods=1).mean().to_numpy()
+    # Subtract mean from entire envelope to remove DC component in the spectrum
+    self.envelope = self.envelope - np.mean(self.envelope)
+    # TODO: downsample envelope
+
     self.derivative = np.gradient(self.envelope)
-    self.second_derivative = np.gradient(self.derivative)
-    scaler = MaxAbsScaler()
     self.derivative = scaler.fit_transform(self.derivative.reshape(-1, 1)).reshape(-1)
-    self.second_derivative = scaler.fit_transform(self.second_derivative.reshape(-1, 1)).reshape(-1)
-
     self.peaks, _ = signal.find_peaks(self.derivative, distance = self.sr * self.min_dur, prominence = self.min_peak_prominence)
-    self.peaks_second, _ = signal.find_peaks(self.second_derivative, distance = self.sr * self.min_dur, prominence = self.min_peak_prominence)
 
-    # Note: self.beats will store the sample indices of the beats
+    #Detect beats
+    # Note: self.beats will store the frame indices of the detected beats
     self.beats = []
     min_ref = 0.01
     for index in self.peaks:
@@ -73,20 +103,32 @@ class BD():
       else:
         continue
 
-    self.beats_second = []
-    min_ref = 0.01
-    for index in self.peaks_second:
-      peak_index = index
-      if self.second_derivative[peak_index] > min_ref:
-        self.beats_second.append(peak_index)
+    beat_timestamps_seconds =  np.array(self.beats) / self.sr
 
-    beat_timestamps =  np.array(self.beats) / self.sr
+    # Extract envelope features
+      # Spectrum of the magnitude envelope
+    assert not np.any(np.isnan(self.envelope)), "Envelope contains NaN values"
+    assert not np.any(np.isinf(self.envelope)), "Envelope contains infinite values"
 
-    time_normalized_timestamps = beat_timestamps / self.tmax_s
+    envSpec = np.fft.fft(self.envelope)
+    N = len(envSpec)
+    freq_axis = np.fft.fftfreq(N, 1 / self.sr)
+    
+    envSpec = abs(envSpec[:N // 2])
+    freq_axis = freq_axis[:N // 2]
 
-    beat_timestamps_second = np.array(self.beats) / self.sr
+    self.spectrum = envSpec
+    self.envSpecFreq = freq_axis
 
-    return beat_timestamps, time_normalized_timestamps, beat_timestamps_second
+    return beat_timestamps_seconds, envSpec
+  
+  def plot_ground_truth(self, ground_truth, plot):
+      tg = textgrid.openTextgrid(ground_truth, includeEmptyIntervals=True)
+      gt_tier = tg.getTier('beats')
+      gt_timestamps = [entry.time * self.sr for entry in gt_tier.entries]
+      for i, beat in enumerate(gt_timestamps):
+        label = "Ground truth" if i == 0 else ""
+        plot.axvline(beat, color='red', linestyle='-', alpha=0.7, label = label)
 
   def plot_filtered(self, out_file, ground_truth = None):
     '''
@@ -94,75 +136,47 @@ class BD():
     Shows the original and bandpass filtered waveforms, the amplitude envelope, its derivative
     with peaks and beats marks, and the frequency response of the bandpass filter.
     '''
-    plt.figure(figsize=(12, 8))
 
-    plt.subplot(5,1,1)
-    plt.plot(self.waveform)
-    plt.title("Original Waveform")
+    fig = plt.figure(figsize=(12, 8))
 
-    plt.subplot(5,1,2)
-    plt.plot(self.filtered)
-    plt.title("Bandpass Filtered Waveform")
+    # Create 6 subplots, with the first 5 sharing x-axis
+    ax1 = plt.subplot(6, 1, 1)
+    ax2 = plt.subplot(6, 1, 2, sharex=ax1)
+    ax3 = plt.subplot(6, 1, 3, sharex=ax1)
+    ax4 = plt.subplot(6, 1, 4, sharex=ax1)
+    ax5 = plt.subplot(6, 1, 5, sharex=ax1)
+    ax6 = plt.subplot(6, 1, 6) # Independent x-axis
 
-    plt.subplot(5,1,3)
-    plt.plot(self.rectified)
-    plt.title("Rectified Waveform")
+    ax1.plot(self.waveform)
+    ax1.set_title("Original Waveform")
 
-    plt.subplot(5,1,4)
-    plt.plot(self.envelope)
-    plt.title("Amplitude envelope")
+    ax2.plot(self.filtered)
+    ax2.set_title("Bandpass Filtered Waveform")
 
-    plt.subplot(5,1,5)
-    plt.plot(self.derivative)
+    ax3.plot(self.rectified)
+    ax3.set_title("Rectified Waveform")
+
+    ax4.plot(self.envelope)
+    ax4.set_title("Amplitude Envelope")
+
+    ax5.plot(self.derivative)
     for beat in self.beats:
-      plt.axvline(beat, color='red', linestyle='--', alpha=0.7, label="Detected Beat" if beat == self.beats[0] else "")
+        ax5.axvline(beat, color='red', linestyle='--', alpha=0.7,
+                    label="Detected Beat" if beat == self.beats[0] else "")
 
     if ground_truth is not None:
-      tg = textgrid.openTextgrid(ground_truth, includeEmptyIntervals=True)
-      gt_tier = tg.getTier('beats')
-      gt_timestamps = [entry.time * self.sr for entry in gt_tier.entries]
-      for i, beat in enumerate(gt_timestamps):
-        label = "Ground truth" if i == 0 else ""
-        plt.axvline(beat, color='red', linestyle='-', alpha=0.7, label = label)
-      plt.legend(fontsize='small')
-      plt.title("Derivative of the envelope")
-      plt.tight_layout()
-      plt.savefig(out_file)
+        self.plot_ground_truth(ground_truth, ax5)
+        ax5.legend(fontsize='small')
     else:
-      plt.legend()
-      plt.title("Derivative of the envelope")
-      plt.tight_layout()
-      plt.savefig(out_file)
+        ax5.legend()
+    ax5.set_title("Derivative of the envelope")
 
-    # plt.subplot(6,1,6)
-    # plt.plot(self.second_derivative)
-    # plt.plot(self.peaks_second, self.second_derivative[self.peaks_second], "*", color = 'purple', label = 'Peak_2nd derivative')
-    # for beat in self.beats_second:
-    #   plt.axvline(beat, color='red', linestyle='-', alpha=0.7, label="Beat_2nd derivative" if beat == self.beats_second[0] else "")
-    # plt.legend()
-    # plt.title("Second derivative of the envelope")
+    ax6.plot(self.envSpecFreq, self.spectrum)
+    ax6.set_title('Spectrum of the amplitude envelope')
+    ax6.set_xlim(0, 15)
 
-    ## Bandpass frequency response
-    # plt.figure(figsize=(6, 4))
-    # w, h = signal.freqz(*self.bandpass(), worN=1024)
-    # # Convert frequency from radians/sample to Hz
-    # frequencies = w * self.sr / (2 * np.pi)
-    # # Magnitude in dB
-    # magnitude = 20 * np.log10(abs(h))
-    # plt.plot(frequencies, magnitude)
-    # plt.title("Frequency Response of the Bandpass Filter")
-    # plt.xlabel("Frequency [Hz]")
-    # plt.ylabel("Magnitude [dB]")
-    # plt.ylim([-30, 0])
-    # plt.axhline(-3, color = 'grey', linestyle='--')
-    # center = (self.bandpass_left + self.bandpass_right) / 2
-    # plt.axvline(center, color = 'black', linestyle='--', label='Center frequency')
-    # plt.axvline(self.bandpass_right, color = 'green', linestyle='--', label='Right Cutoff')
-    # plt.axvline(self.bandpass_left, color = 'red', linestyle='--', label='Left Cutoff')
-    # plt.xticks([0, self.bandpass_left, center, self.bandpass_right, self.sr/2], rotation = 45)
-    # plt.yticks(range(0, -30, -3))
-    # plt.legend()
-    # plt.show()
+    plt.tight_layout()
+    plt.savefig(out_file)
 
   def write_wav(self, out_file):
     '''

@@ -1,13 +1,10 @@
 #  🥁 Vowel Beat Detector 🥁
-This program is based on the beat measurement procedure as described by Cummins &amp; Port (1998). A beat is located at (roughly) the midpoint of every local rise in the derivative of the amplitude envelope of a waveform. The main script receives audio files as input and outputs arrays with timestamps of the detected beats.
-
-# Basic procedure
-This is an implementation of the following procedure, taken from Appendix A of Cummins & Port's Rhythmic constraints on stress timing in English (1998):
-
-> The signal is bandpass filtered using a firstorder Butterworth filter centered at 1000 Hz and having a bandwidth of 600 Hz. Because of the shallow skirts of this filter, the net effect is to largely eliminate fricative noise and F0 energy, leaving energy in the formant regions intact. Informal trials with a range  of filters indicated that any procedure which achieved these dual goals would suffice. The resulting signal is rectified (using absolute values) and smoothed heavily, usually using another first order Butterworth filter, this time as a lowpass filter with a very low cutoff of about 10 Hz. The result of this stage is a smooth amplitude envelope. A beat is associated with every local rise in this envelope, and is defined as occuring at the point in time midway between the points where the local rise is 10% and 90% complete. This is similar to the heuristic used in Scott (1993), and serves to remove the effect of very gradual on- and offsets.
+This repository provides tools to analyze speech rhythm based on durational and spectral approaches:
+* Vowel onset (beat) locations
+* Low-frequency (amplitude envelope) spectrum
 
 # Functionality
-The `beat_detector` module provides the `BD` class. Objects created by instantiating this class can be configured with respect to filter design and peak detection properties and offer the base method for vowel beat detection. Additionally, it is possible to plot the byproducts of the procedure and play the filtered audio.
+The `beat_detector` module provides the `BD` class. Objects created by instantiating this class can be configured with respect to filter design and onset detection properties and offer the base method for rhythmic feature extraction. Additionally, it is possible to plot the byproducts of the procedure and play the filtered audios.
 
 # Usage
 1. **Clone this repository and install dependencies**
@@ -54,7 +51,7 @@ The `beat_detector` module provides the `BD` class. Objects created by instantia
     ```
 
 # Output format and loading
-Outputs will be saved under the specified directory. Detected beats are numpy arrays aggregated into `.npz` files and indexed by their filenames on the original input folder, so . Check `test/inspect_arays` for an example on how to load the data.    
+Outputs will be saved under the specified directory. Data is aggregated into `.parquet` files and indexed by filenames on the original input folder. Check `test/inspect_parquet` for an example on how to load the data.    
 
 # Example
 ![Image](images/example.png)
@@ -76,6 +73,31 @@ issn = {0095-4470},
 doi = {https://doi.org/10.1006/jpho.1998.0070},
 url = {https://www.sciencedirect.com/science/article/pii/S0095447098900705},
 author = {Fred Cummins and Robert Port}
+}
+
+@article{gibbonRhythmsRhythm2023,
+  title = {The Rhythms of Rhythm},
+  author = {Gibbon, Dafydd},
+  date = {2023-04},
+  journaltitle = {Journal of the International Phonetic Association},
+  shortjournal = {Journal of the International Phonetic Association},
+  volume = {53},
+  number = {1},
+  pages = {233--265},
+  doi = {10.1017/S0025100321000086},
+  langid = {english}
+}
+
+@article{tilsenLowfrequencyFourierAnalysis2008,
+  title = {Low-Frequency {{Fourier}} Analysis of Speech Rhythm},
+  author = {Tilsen, Sam and Johnson, Keith},
+  date = {2008-08-01},
+  journaltitle = {The Journal of the Acoustical Society of America},
+  volume = {124},
+  number = {2},
+  pages = {EL34-EL39},
+  doi = {10.1121/1.2947626},
+  langid = {english}
 }
 ```
 
