@@ -4,6 +4,8 @@ from pathlib import Path
 import argparse
 from tqdm import tqdm
 import pandas as pd
+import pyarrow as pa
+import pyarrow.parquet as pq
 from beat_detector import BD
 
 parser = argparse.ArgumentParser()
@@ -37,8 +39,10 @@ for i, file_path in enumerate(tqdm(file_list, desc="Processing audios")):
 
   entry = {
       'key': identifier,
-      'timestamps': beats[0],
-      'envelope': beats[1]
+      'beats': beats['beat_frames'],
+      'envelope': beats['envelope_spectrum'],
+      'feats': beats['features'],
+      'intervals': beats['beat_intervals']
   }
   data.append(entry)
 
@@ -67,5 +71,5 @@ for i, file_path in enumerate(tqdm(file_list, desc="Processing audios")):
 
 os.makedirs(args.output_dir, exist_ok=True)
 out_file = os.path.join(args.output_dir, "beat_timestamps.parquet")
-df = pd.DataFrame(data)
-df.to_parquet(out_file, engine='pyarrow')
+table = pa.Table.from_pylist(data)
+pq.write_table(table, out_file)

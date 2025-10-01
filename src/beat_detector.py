@@ -1,4 +1,5 @@
 from scipy import signal
+from scipy.signal import windows
 import soundfile as sf
 import matplotlib.pyplot as plt
 import numpy as np
@@ -6,6 +7,7 @@ import pandas as pd
 from praatio import textgrid
 import warnings
 from sklearn.preprocessing import MaxAbsScaler
+from feat_extractor import MFCC
 
 class BD():
   def __init__(self, sr, bandpass_left, bandpass_right, bandpass_order = 1, lowpass_order = 3, lowpass_cutoff = 10, min_dur = 0.05, min_peak_prominence = 0.25):
@@ -18,6 +20,7 @@ class BD():
     self.min_peak_prominence = min_peak_prominence
     self.sr = sr
     self.nyquist = sr / 2
+    self.feat_extractor = MFCC(sr = self.sr, n_mfcc = 13, frame_length = 512) #TODO: adjust frame length
 
   def bandpass(self):
     '''
@@ -67,7 +70,7 @@ class BD():
     '''
     Core function. Performs all signal processing steps.
     outputs a tuple:
-    (beat_timestamps_seconds, envelope_spectrum) 
+    (beat_frames, envelope_spectrum) 
     '''
     # Waveform and intermediate signals are stored as instance attributes
     self.waveform = waveform
@@ -83,9 +86,12 @@ class BD():
     self.envelope = self.envelope[int(self.filter_delay):]
     # Moving average smoothing (50ms window)
     self.envelope = pd.Series(self.envelope).rolling(int(self.sr/20), center=False, min_periods=1).mean().to_numpy()
-    # Subtract mean from entire envelope to remove DC component in the spectrum
-    self.envelope = self.envelope - np.mean(self.envelope)
-    # TODO: downsample envelope
+    # Windowing (prevent spectral leakage)
+    self.N = len(self.envelope)
+    tukey = windows.tukey(self.N, alpha=0.05)
+    self.envelope = self.envelope * tukey
+    # Subtract mean from entire envelope to remove DC component in the spectrum, then normalize to unit variance
+    self.envelope = (self.envelope - np.mean(self.envelope)) / np.std(self.envelope)
 
     self.derivative = np.gradient(self.envelope)
     self.derivative = scaler.fit_transform(self.derivative.reshape(-1, 1)).reshape(-1)
@@ -94,16 +100,33 @@ class BD():
     #Detect beats
     # Note: self.beats will store the frame indices of the detected beats
     self.beats = []
-    min_ref = 0.01
+    self.feats = []
+    self.beat_intervals = []
+
     for index in self.peaks:
       peak_index = index
-      if self.derivative[peak_index] > min_ref:
+      if self.derivative[peak_index] > 0:
         self.beats.append(peak_index)
+
+        #TODO: extract waveform spectrum at beat locations ()
+
+        feats = self.feat_extractor.extract_mfcc(self.waveform, peak_index)
+        self.feats.append(feats[:, 0])
 
       else:
         continue
+      
+    for idx, _ in enumerate(self.beats):
+      if idx != 0:
+        interval = (self.beats[idx] - self.beats[idx - 1]) / self.sr
+        self.beat_intervals.append(interval)
+      else:
+        self.beat_intervals.append(0)
+        
 
-    beat_timestamps_seconds =  np.array(self.beats) / self.sr
+    beat_frames =  self.beats
+    beat_intervals = self.beat_intervals
+    feats = self.feats # len(beat_frames), n_mfcc
 
     # Extract envelope features
       # Spectrum of the magnitude envelope
@@ -111,16 +134,16 @@ class BD():
     assert not np.any(np.isinf(self.envelope)), "Envelope contains infinite values"
 
     envSpec = np.fft.fft(self.envelope)
-    N = len(envSpec)
-    freq_axis = np.fft.fftfreq(N, 1 / self.sr)
+    self.N= len(envSpec)
+    freq_axis = np.fft.fftfreq(self.N, 1 / self.sr)
     
-    envSpec = abs(envSpec[:N // 2])
-    freq_axis = freq_axis[:N // 2]
+    envSpec = abs(envSpec[:self.N// 2])
+    freq_axis = freq_axis[:self.N// 2]
 
     self.spectrum = envSpec
     self.envSpecFreq = freq_axis
 
-    return beat_timestamps_seconds, envSpec
+    return {'beat_frames':beat_frames, 'envelope_spectrum':envSpec, 'features':feats, 'beat_intervals':beat_intervals}
   
   def plot_ground_truth(self, ground_truth, plot):
       tg = textgrid.openTextgrid(ground_truth, includeEmptyIntervals=True)
@@ -173,6 +196,9 @@ class BD():
 
     ax6.plot(self.envSpecFreq, self.spectrum)
     ax6.set_title('Spectrum of the amplitude envelope')
+    #bin_size = self.sr / self.N
+    #tick_freqs = np.arange(0, 15, bin_size)
+    #ax6.set_xticks(tick_freqs)
     ax6.set_xlim(0, 15)
 
     plt.tight_layout()
